@@ -1,0 +1,49 @@
+name: Validación de convención de commits
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  validar-commits:
+    name: Verificar Conventional Commits
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar mensajes de commit
+        run: |
+          PATRON='^(feat|fix|docs|ci|build|test|refactor|chore)(\((casper|source|config|docs|repo)\))?: .{10,}$'
+          BASE="origin/${{ github.base_ref }}"
+          FALLOS=0
+
+          echo "Validando commits contra la convención del equipo..."
+          echo ""
+
+          while read -r LINEA; do
+            [ -z "$LINEA" ] && continue
+            if echo "$LINEA" | grep -qE "$PATRON"; then
+              echo "OK       | $LINEA"
+            else
+              echo "INVALIDO | $LINEA"
+              FALLOS=$((FALLOS+1))
+            fi
+          done < <(git log --format=%s "$BASE..HEAD")
+
+          echo ""
+          if [ "$FALLOS" -gt 0 ]; then
+            echo "Se encontraron $FALLOS commit(s) que no cumplen la convención."
+            echo "Formato esperado: tipo(alcance): descripcion (#issue)"
+            echo "Tipos: feat, fix, docs, ci, build, test, refactor, chore"
+            echo "Alcances: casper, source, config, docs, repo"
+            exit 1
+          fi
+
+          echo "Todos los commits cumplen la convención del equipo."
