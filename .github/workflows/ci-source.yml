@@ -1,0 +1,57 @@
+name: CI - Source (CI-2)
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'source/**'
+      - '.github/workflows/ci-source.yml'
+  pull_request:
+    paths:
+      - 'source/**'
+      - '.github/workflows/ci-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build y validación del tema
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: source
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: source/pnpm-lock.yaml
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Compilar assets del tema
+        run: pnpm build
+
+      - name: Empaquetar el tema
+        run: pnpm zip
+
+      - name: Validar compatibilidad con gscan
+        run: pnpm exec gscan --fatal --verbose .
+
+      - name: Publicar artefacto del tema
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-theme
+          path: source/dist/source.zip
+          retention-days: 30
