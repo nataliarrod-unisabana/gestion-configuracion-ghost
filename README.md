@@ -88,7 +88,7 @@ gestion-configuracion-ghost/
 │   ├── compose.yaml         Servicios de Ghost y MySQL
 │   └── scripts/
 │       └── validate-env.sh  Validación de variables requeridas
-├── .github/workflows/       Los seis pipelines de CI/CD
+├── .github/workflows/       Los siete workflows de CI/CD
 ├── .gemini/
 │   └── styleguide.md        Guía de revisión para el agente de IA
 ├── docs/
@@ -131,8 +131,9 @@ propio estándar IEEE 828 (IEEE, 2012): la estrategia de configuración se adapt
 al contexto del proyecto y no se hereda automáticamente del sistema analizado.
 
 ![Grafo de ramas](docs/evidencias/22_grafo_ramas.png)
-*Historial completo con las ramas de característica convergiendo en `develop` y
-los commits de merge visibles.*
+*Historial completo con `main`, `develop` y el tag `v1.0.0` sobre el mismo
+commit tras el release, y las ramas de característica convergiendo mediante
+merges visibles.*
 
 ### Protección de ramas
 
@@ -143,7 +144,21 @@ convierte la estrategia de branching en un control efectivo y no en una
 declaración documental.
 
 ![Rulesets de protección](docs/evidencias/21_rulesets_proteccion.png)
-*Los rulesets `proteccion-main` y `proteccion-develop`, ambos activos.*
+*Los rulesets `proteccion-main` y `proteccion-develop`, ambos activos con tres
+reglas cada uno.*
+
+![Detalle de las reglas de protección](docs/evidencias/21b_ruleset_detalle.png)
+*Las reglas del ruleset `proteccion-main`: exigencia de pull request antes de
+integrar y restricción de eliminación de la rama. El número de aprobaciones
+requeridas se configura dentro de los ajustes adicionales de la primera regla.*
+
+El control se verificó incluso en el propio pull request de release: al no tener
+aún la aprobación requerida, el merge quedó bloqueado a pesar de que los ocho
+checks automatizados ya estaban en verde.
+
+![Pull request de release bloqueado por falta de aprobación](docs/evidencias/21c_pr_release_bloqueado.png)
+*Todos los controles automatizados aprobaron el cambio, pero la regla de
+aprobación humana impidió el merge hasta contar con una revisión.*
 
 La nomenclatura de las ramas no queda librada a la disciplina individual: el
 pipeline `branch-lint.yml` la verifica automáticamente en cada pull request y
@@ -152,6 +167,10 @@ bloquea la integración cuando un nombre no cumple el patrón acordado.
 ![Control de nombres de rama fallando](docs/evidencias/16_branch_lint_rechazo.png)
 *El control rechazando un nombre de rama que no sigue la convención `feature/`,
 `release/` o `hotfix/`.*
+
+![Ejecución del control de ramas en estado de fallo](docs/evidencias/20_branch_lint_run_fallido.png)
+*El job terminando con exit code 1 sobre una rama de prueba creada
+deliberadamente con un nombre inválido.*
 
 ---
 
@@ -176,17 +195,24 @@ La primera versión publicada es **v1.0.0**, que marca la baseline del estado
 completo de la implementación.
 
 ![Tag v1.0.0](docs/evidencias/23_tag_v100.png)
-*El tag publicado en el repositorio.*
+*El tag publicado sobre el commit de integración del release, con sus enlaces de
+descarga del código fuente.*
 
 El proceso de publicación está automatizado en `release.yml`, que al detectar un
 tag construye los artefactos de ambos temas y crea la release con los paquetes
 adjuntos.
 
 ![Release publicada](docs/evidencias/24_release_publicada.png)
-*La release v1.0.0 con `casper.zip` y `source.zip` disponibles para descarga.*
+*La release v1.0.0, publicada automáticamente por `github-actions`, con las
+notas de versión generadas a partir del historial de cambios.*
+
+![Artefactos adjuntos a la release](docs/evidencias/24b_release_assets.png)
+*Los archivos `casper.zip` y `source.zip` disponibles para descarga, cada uno
+con su digest sha256 de verificación.*
 
 ![Pipeline de release](docs/evidencias/25_pipeline_release.png)
-*Ejecución del workflow de release disparada automáticamente por el tag.*
+*Ejecución del workflow de release, disparada automáticamente por el push del
+tag `v1.0.0`, finalizando en verde.*
 
 ---
 
@@ -214,6 +240,9 @@ La referencia al número de issue es el mecanismo central de trazabilidad del
 proyecto: vincula cada cambio en el código con la solicitud que lo originó, con
 la discusión asociada y con la aprobación que lo autorizó.
 
+![Issues del proyecto con sus pull requests](docs/evidencias/02_issues_trazabilidad.png)
+*Los issues del proyecto, cada uno enlazado con el pull request que lo resuelve.*
+
 ![Commits atómicos referenciando issues](docs/evidencias/04_commits_atomicos_ci3.png)
 *Siete commits del CI-3, cada uno con propósito único y su issue asociado.*
 
@@ -224,7 +253,11 @@ automáticamente al integrarse.*
 El pipeline `commit-lint.yml` verifica el cumplimiento del formato y bloquea la
 integración cuando algún commit no lo respeta.
 
-![Control de commits fallando](docs/evidencias/15_commit_lint_log_rechazo.png)
+![Control de commits fallando](docs/evidencias/14_commit_lint_check_fallido.png)
+*El check de convención de commits en estado de fallo dentro de un pull
+request.*
+
+![Log del control de commits rechazando un mensaje](docs/evidencias/15_commit_lint_log_rechazo.png)
 *Log del rechazo de un commit con el mensaje "cambios varios", indicando el
 formato esperado.*
 
@@ -232,7 +265,7 @@ formato esperado.*
 
 ## 7. Pipelines de integración y entrega continua
 
-El repositorio cuenta con seis workflows de GitHub Actions.
+El repositorio cuenta con siete workflows de GitHub Actions.
 
 | Workflow | Función | CI asociado |
 |----------|---------|-------------|
@@ -241,11 +274,16 @@ El repositorio cuenta con seis workflows de GitHub Actions.
 | `ci-config-entorno.yml` | Análisis del Dockerfile, sintaxis del compose y validación de variables | CI-3 |
 | `branch-lint.yml` | Verificación de la nomenclatura de ramas | Todos |
 | `commit-lint.yml` | Verificación de la convención de commits | Todos |
+| `ai-review.yml` | Revisión automática contra la guía del equipo | Todos |
 | `release.yml` | Publicación de la versión con sus artefactos | Todos |
 
 ![Workflows registrados](docs/evidencias/18_actions_workflows.png)
+*Los siete pipelines listados en la pestaña Actions del repositorio, incluido el
+de Release.*
 
-*Los seis pipelines en la pestaña Actions del repositorio.*
+![Historial de ejecuciones](docs/evidencias/18b_actions_historial_ejecuciones.png)
+*Historial acumulado de ejecuciones, con el workflow, la rama y el autor
+identificables en cada una.*
 
 ### Dos categorías de automatización
 
@@ -260,8 +298,19 @@ ejecuciones innecesarias.
 ![Pipeline del CI-3 en verde](docs/evidencias/09_ci3_pipeline_verde.png)
 *Los tres jobs del CI-3 y el del agente de IA, todos exitosos.*
 
-![Artefactos publicados](docs/evidencias/19_artefactos_descargables.png)
-*El artefacto `casper-theme` generado y disponible para descarga.*
+![Pasos del pipeline de Casper](docs/evidencias/19b_pipeline_casper_pasos.png)
+*Los pasos del job del CI-1, desde la instalación de dependencias hasta la
+validación de compatibilidad con gscan.*
+
+![Historial del CI-1](docs/evidencias/19c_ci_casper_historial.png)
+*Ejecuciones del pipeline de Casper, tanto sobre la rama `feature/ci-casper`
+como sobre `develop` tras el merge.*
+
+![Artefacto de Casper publicado](docs/evidencias/19_artefactos_descargables.png)
+*El artefacto `casper-theme`, con su tamaño y digest sha256.*
+
+![Artefacto de Source publicado](docs/evidencias/19d_artefacto_source.png)
+*El artefacto `source-theme`, generado por el pipeline del CI-2.*
 
 Los pipelines `branch-lint` y `commit-lint` son **controles de política**: no
 verifican el artefacto sino el cumplimiento de las reglas que el propio equipo
@@ -321,8 +370,8 @@ política a comportamiento verificable:
 
 ### Resultados y evaluación crítica
 
-El agente produjo hallazgos de valor desigual, y su evaluación es parte del
-proceso.
+El agente produjo hallazgos de valor desigual a lo largo del proyecto, y su
+evaluación es parte del proceso.
 
 ![Revisión del agente sobre el CI-3](docs/evidencias/10_agente_revision_ci3.png)
 *El agente evaluando el CI-3 contra las cinco reglas del `styleguide.md`.*
@@ -337,16 +386,22 @@ ubicación exacta y la corrección, que el equipo aplicó.
 *El agente identifica la vulnerabilidad de inyección de comandos, su ubicación
 exacta en el archivo y la corrección propuesta mediante una variable de entorno.*
 
-Otros hallazgos requirieron discusión. El agente señaló repetidamente que los
-títulos de los pull requests no incluían el número de issue, aplicando una regla
-que rige los mensajes de commit y no los títulos. También advirtió sobre una
-posible violación de la política de agentes al modificarse un workflow de CI/CD,
-partiendo del supuesto no verificado de que el cambio hubiera sido generado por
-un agente.
+Otros hallazgos requirieron discusión en lugar de corrección. El agente señaló
+repetidamente que los títulos de los pull requests no incluían el número de
+issue, aplicando una regla que rige los mensajes de commit y no los títulos.
+También advirtió, tanto en pull requests de integrantes como en el propio release,
+sobre una posible violación de la política de agentes al modificarse workflows de
+CI/CD, partiendo del supuesto no verificado de que el cambio hubiera sido
+generado por un agente en lugar de por una persona.
 
 ![Revisión de un pull request no conforme](docs/evidencias/13_agente_revision_pr_invalido.png)
 *El agente identificando múltiples incumplimientos en un pull request de prueba,
 incluida la ausencia de estructura en su título y descripción.*
+
+En el pull request de release, el agente volvió a señalar la misma incongruencia
+entre la política de commits y su control automatizado que el equipo ya había
+documentado de forma independiente en la sección 10 de este documento, lo que
+refuerza que se trata de una brecha real y no de una interpretación aislada.
 
 Esta diferencia entre hallazgos accionables y falsos positivos es precisamente lo
 que justifica el carácter consultivo del control. Un equipo que acata
@@ -374,7 +429,9 @@ contribución.
 **Independencia de configuration items.** Cada CI mantiene su propio pipeline,
 activado por filtros de ruta, de modo que un cambio en un tema no dispara la
 validación de la infraestructura ni viceversa. Esto materializa el criterio de la
-Unidad 2 sobre por qué cada elemento se identifica como un CI separado.
+Unidad 2 sobre por qué cada elemento se identifica como un CI separado. La única
+excepción reconocida y documentada es el propio pull request de release, que por
+naturaleza consolida el trabajo de los tres CI en una versión publicada.
 
 **Todo en control de versiones.** Siguiendo la práctica señalada por Kim et al.
 (2016), el repositorio versiona no solo el código sino la definición del entorno
@@ -385,6 +442,10 @@ de ejecución, las reglas de calidad y las políticas del proceso.
 ![Pull request con doble aprobación](docs/evidencias/07_pr_doble_aprobacion.png)
 *Un pull request con dos aprobaciones humanas y todos los checks automatizados
 en verde antes de integrarse.*
+
+![Pull request integrado](docs/evidencias/08_pr_integrado.png)
+*El cambio integrado a `develop`, con los revisores que lo autorizaron
+identificables en el registro.*
 
 ---
 
@@ -398,23 +459,34 @@ ya integradas.
 **El control de commits no exige el identificador de issue.** El patrón de
 `commit-lint.yml` valida el tipo, el alcance y una longitud mínima de descripción,
 pero acepta mensajes sin la referencia `(#N)` que la convención declara
-obligatoria. La política es más exigente que su control.
+obligatoria. La política es más exigente que su control. Esta brecha fue
+detectada de forma independiente en dos momentos: por el equipo durante el
+desarrollo, y por el agente de IA al revisar el pull request de release.
 
 **El mensaje del control de ramas promete más de lo que verifica.** La ayuda que
 muestra `branch-lint.yml` indica un formato `release/v<X.Y.Z>` para las ramas de
 versión, mientras que el patrón acepta cualquier texto después del prefijo.
 
-Ambas brechas son del mismo tipo: un control automatizado que verifica menos de
-lo que la política enuncia. Identificarlas tiene valor porque una automatización
-que se asume más estricta de lo que es genera una falsa sensación de control.
+**El pull request de release mezcla configuration items por diseño.** La regla de
+independencia de CI aplica al desarrollo cotidiano; el acto de release, por su
+naturaleza, consolida en un mismo pull request el trabajo ya integrado de los
+tres CI. El agente señaló este PR como no conforme, y el equipo evaluó la
+observación como un límite esperado del propio proceso de liberación de
+versiones, no como un defecto a corregir.
+
+Estas brechas son del mismo tipo: puntos donde la política declarada es más
+estricta que el control implementado, o donde el control aplica una regla fuera
+del contexto para el que fue pensada. Identificarlas tiene valor porque una
+automatización que se asume más estricta de lo que es genera una falsa sensación
+de control.
 
 ---
 
 ## 11. Evidencias
 
 El detalle completo de las evidencias, con su descripción individual, está en el
-índice de [`docs/evidencias/`](docs/evidencias/README.md). Las capturas más
-representativas de cada criterio se incluyeron directamente en las secciones
+índice de [`docs/evidencias/README.md`](docs/evidencias/README.md). Las capturas
+más representativas de cada criterio se incluyeron directamente en las secciones
 anteriores, junto al argumento que respaldan.
 
 ---
