@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar-release:
+    name: Construir artefactos y publicar release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: casper/package.json
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Construir Casper
+        working-directory: casper
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm zip
+
+      - name: Construir Source
+        working-directory: source
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm zip
+
+      - name: Publicar release con los artefactos
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            casper/dist/casper.zip
+            source/dist/source.zip
