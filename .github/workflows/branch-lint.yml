@@ -1,0 +1,37 @@
+name: Validación de nombres de rama
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  validar-nombre-rama:
+    name: Verificar nomenclatura GitFlow
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validar el nombre de la rama de origen
+        run: |
+          RAMA="${{ github.head_ref }}"
+          PATRON='^(feature|release|hotfix)/[a-z0-9][a-z0-9._-]*$'
+
+          echo "Rama evaluada: $RAMA"
+          echo ""
+
+          if echo "$RAMA" | grep -qE "$PATRON"; then
+            echo "OK: el nombre de la rama cumple la convención del equipo."
+            exit 0
+          fi
+
+          echo "El nombre '$RAMA' no cumple la nomenclatura acordada."
+          echo ""
+          echo "Formatos válidos:"
+          echo "  feature/<nombre-corto>   para trabajo nuevo"
+          echo "  release/v<X.Y.Z>         para preparar una versión"
+          echo "  hotfix/<nombre-corto>    para correcciones urgentes sobre main"
+          echo ""
+          echo "Usa solo minúsculas, números, puntos, guiones y guiones bajos."
+          exit 1
