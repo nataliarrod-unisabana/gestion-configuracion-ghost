@@ -1,0 +1,4 @@
+# El archivo de variables reales nunca se versiona
+.env
+.env.local
+.env.*.local
