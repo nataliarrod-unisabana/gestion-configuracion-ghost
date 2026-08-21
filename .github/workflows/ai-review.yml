@@ -1,0 +1,162 @@
+name: Revisión automática por agente de IA
+
+# Este workflow implementa la política definida en AGENTS.md.
+# El agente revisa y comenta, pero nunca aprueba ni integra: publica un comentario
+# de tipo issue_comment, no una revisión con estado APPROVE. La aprobación sigue
+# siendo una autoridad reservada a las personas del equipo.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [develop, main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  revision-ia:
+    name: Revisión contra la guía del equipo
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Revisar el pull request
+        uses: actions/github-script@v7
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.6-flash
+        with:
+          script: |
+            const fs = require('fs');
+
+            const apiKey = process.env.GEMINI_API_KEY;
+            const modelo = process.env.GEMINI_MODEL;
+
+            if (!apiKey) {
+              core.warning('No hay GEMINI_API_KEY configurada. Se omite la revisión.');
+              return;
+            }
+
+            // 1. Obtener el diff del pull request
+            const pr = context.payload.pull_request;
+            const diffResp = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              mediaType: { format: 'diff' }
+            });
+
+            let diff = String(diffResp.data);
+            const LIMITE = 60000;
+            let truncado = false;
+            if (diff.length > LIMITE) {
+              diff = diff.slice(0, LIMITE);
+              truncado = true;
+            }
+
+            // 2. Leer la guía de revisión del equipo
+            let guia = '';
+            try {
+              guia = fs.readFileSync('.gemini/styleguide.md', 'utf8');
+            } catch (e) {
+              core.warning('No se encontró .gemini/styleguide.md');
+              guia = 'No se definió una guía de revisión para este repositorio.';
+            }
+
+            // 3. Construir la instrucción para el agente
+            const instruccion = [
+              'Eres un agente de revisión de código para un proyecto académico de',
+              'gestión de configuración de software. Revisa el siguiente pull request',
+              'aplicando ESTRICTAMENTE la guía del equipo que se incluye más abajo.',
+              '',
+              'Responde en español, en formato Markdown, con esta estructura:',
+              '',
+              '## Resumen',
+              'Dos o tres frases sobre qué hace este pull request.',
+              '',
+              '## Cumplimiento de la guía del equipo',
+              'Una lista donde por cada regla relevante indiques si se cumple o no,',
+              'con una explicación breve. Cita la regla concreta de la guía.',
+              '',
+              '## Observaciones',
+              'Hallazgos técnicos ordenados por severidad (Crítica, Alta, Media, Baja).',
+              'Si no encuentras nada relevante, dilo explícitamente en lugar de inventar.',
+              '',
+              'No apruebes ni rechaces el pull request: tu salida es consultiva y la',
+              'decisión de integrar corresponde a una persona del equipo.',
+              '',
+              '--- GUÍA DE REVISIÓN DEL EQUIPO ---',
+              guia,
+              '',
+              '--- TÍTULO DEL PULL REQUEST ---',
+              pr.title,
+              '',
+              '--- DESCRIPCIÓN ---',
+              pr.body || '(sin descripción)',
+              '',
+              '--- CAMBIOS (diff) ---',
+              diff,
+              truncado ? '\n[El diff fue truncado por tamaño.]' : ''
+            ].join('\n');
+
+            // 4. Llamar a la API de Gemini
+            let texto;
+            try {
+              const respuesta = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey
+                  },
+                  body: JSON.stringify({
+                    contents: [{ parts: [{ text: instruccion }] }]
+                  })
+                }
+              );
+
+              if (!respuesta.ok) {
+                const detalle = await respuesta.text();
+                core.warning(`La API respondió ${respuesta.status}: ${detalle.slice(0, 500)}`);
+                return;
+              }
+
+              const datos = await respuesta.json();
+              texto = datos?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+              if (!texto) {
+                core.warning('La API no devolvió texto utilizable.');
+                return;
+              }
+            } catch (e) {
+              core.warning(`Error al invocar el agente: ${e.message}`);
+              return;
+            }
+
+            // 5. Publicar el resultado como comentario
+            const cuerpo = [
+              '## Revisión automática del agente de IA',
+              '',
+              texto,
+              '',
+              '---',
+              '*Revisión generada automáticamente según la política definida en',
+              '[`AGENTS.md`](../blob/develop/AGENTS.md) y la guía de',
+              '[`.gemini/styleguide.md`](../blob/develop/.gemini/styleguide.md).*',
+              '',
+              '*Este resultado es consultivo y no sustituye la aprobación humana',
+              `exigida por las reglas de protección de rama. Modelo: \`${modelo}\`.*`
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: cuerpo
+            });
+
+            core.info('Revisión publicada correctamente.');

@@ -1,0 +1,68 @@
+name: CI - Configuración de entorno (CI-3)
+
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'config-entorno/**'
+      - '.github/workflows/ci-config-entorno.yml'
+  pull_request:
+    paths:
+      - 'config-entorno/**'
+      - '.github/workflows/ci-config-entorno.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar-dockerfile:
+    name: Análisis estático del Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ejecutar hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: config-entorno/Dockerfile
+          failure-threshold: error
+
+  validar-compose:
+    name: Validación del archivo compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar sintaxis del compose
+        working-directory: config-entorno
+        run: |
+          cp .env.example .env
+          sed -i 's/CAMBIAR_ESTE_VALOR/valor-de-prueba-ci/g' .env
+          docker compose config > /dev/null
+          echo "El archivo compose.yaml es sintácticamente válido."
+
+  validar-plantilla-env:
+    name: Validación de variables de entorno
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Caso positivo - archivo .env completo
+        working-directory: config-entorno
+        run: |
+          cp .env.example .env
+          sed -i 's/CAMBIAR_ESTE_VALOR/valor-de-prueba-ci/g' .env
+          chmod +x scripts/validate-env.sh
+          ./scripts/validate-env.sh .env.example .env
+
+      - name: Caso negativo - el script debe rechazar un .env incompleto
+        working-directory: config-entorno
+        run: |
+          chmod +x scripts/validate-env.sh
+          printf 'url=http://localhost:2368\n' > .env.incompleto
+          if ./scripts/validate-env.sh .env.example .env.incompleto; then
+            echo "ERROR: el script aceptó un archivo incompleto."
+            exit 1
+          fi
+          echo "Correcto: el script rechazó el archivo incompleto como se esperaba."
