@@ -1,0 +1,56 @@
+name: CI reutilizable - Tema de Ghost
+
+on:
+  workflow_call:
+    inputs:
+      theme:
+        description: Carpeta del tema a construir
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build y validación del tema
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: ${{ inputs.theme }}/package.json
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ${{ inputs.theme }}/pnpm-lock.yaml
+
+      - name: Instalar dependencias
+        working-directory: ${{ inputs.theme }}
+        run: pnpm install --frozen-lockfile
+
+      - name: Compilar assets del tema
+        working-directory: ${{ inputs.theme }}
+        run: pnpm build
+
+      - name: Empaquetar el tema
+        working-directory: ${{ inputs.theme }}
+        run: pnpm zip
+
+      - name: Validar compatibilidad con gscan
+        working-directory: ${{ inputs.theme }}
+        run: pnpm exec gscan --fatal --verbose .
+
+      - name: Publicar artefacto del tema
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.theme }}-theme
+          path: ${{ inputs.theme }}/dist/${{ inputs.theme }}.zip
+          retention-days: 30
