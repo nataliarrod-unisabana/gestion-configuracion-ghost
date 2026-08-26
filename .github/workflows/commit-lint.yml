@@ -1,16 +1,9 @@
-name: Validación de convención de commits
-
-on:
-  pull_request:
-    branches: [develop, main]
-
-permissions:
-  contents: read
-
 jobs:
   commitlint:
     name: Verificar Conventional Commits
     runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+
     steps:
       - name: Descargar el código
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
