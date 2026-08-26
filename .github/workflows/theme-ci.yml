@@ -46,4 +46,11 @@ jobs:
 
       - name: Validar compatibilidad con gscan
         working-directory: ${{ inputs.theme }}
-        run: pnpm exec
+        run: pnpm exec gscan --fatal --verbose .
+
+      - name: Publicar artefacto del tema
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ inputs.theme }}-theme
+          path: ${{ inputs.theme }}/dist/${{ inputs.theme }}.zip
+          retention-days: 30
