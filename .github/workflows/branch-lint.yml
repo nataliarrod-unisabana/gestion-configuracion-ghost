@@ -11,6 +11,7 @@ jobs:
   validar-nombre-rama:
     name: Verificar nomenclatura GitFlow
     runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
 
     steps:
       - name: Validar el nombre de la rama de origen
