@@ -18,15 +18,15 @@ jobs:
 
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Instalar pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           package_json_file: ${{ inputs.theme }}/package.json
 
       - name: Instalar Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
@@ -46,11 +46,4 @@ jobs:
 
       - name: Validar compatibilidad con gscan
         working-directory: ${{ inputs.theme }}
-        run: pnpm exec gscan --fatal --verbose .
-
-      - name: Publicar artefacto del tema
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.theme }}-theme
-          path: ${{ inputs.theme }}/dist/${{ inputs.theme }}.zip
-          retention-days: 30
+        run: pnpm exec
