@@ -449,40 +449,247 @@ identificables en el registro.*
 
 ---
 
-## 10. Brechas identificadas
+## 10. Mejoras de evolución y mantenimiento
 
-El equipo documenta a continuación diferencias conocidas entre las políticas
-declaradas y los controles implementados. Se dejan registradas de forma
-deliberada, ya que corregirlas a esta altura implicaría invalidar contribuciones
-ya integradas.
+Esta sección documenta el reto de mejora del sistema: cómo mejorar la calidad y
+sostenibilidad de Ghost mediante estrategias de mantenimiento y evolución,
+aplicadas sobre la arquitectura descrita en las secciones anteriores.
 
-**El control de commits no exige el identificador de issue.** El patrón de
-`commit-lint.yml` valida el tipo, el alcance y una longitud mínima de descripción,
-pero acepta mensajes sin la referencia `(#N)` que la convención declara
-obligatoria. La política es más exigente que su control. Esta brecha fue
-detectada de forma independiente en dos momentos: por el equipo durante el
-desarrollo, y por el agente de IA al revisar el pull request de release.
+### 10.1 Diagnóstico y oportunidades identificadas
 
-**El mensaje del control de ramas promete más de lo que verifica.** La ayuda que
-muestra `branch-lint.yml` indica un formato `release/v<X.Y.Z>` para las ramas de
-versión, mientras que el patrón acepta cualquier texto después del prefijo.
+Sobre la arquitectura implementada en la Unidad 3, el equipo identificó cinco
+oportunidades de mejora concretas, cada una con una línea base medible:
 
-**El pull request de release mezcla configuration items por diseño.** La regla de
-independencia de CI aplica al desarrollo cotidiano; el acto de release, por su
-naturaleza, consolida en un mismo pull request el trabajo ya integrado de los
-tres CI. El agente señaló este PR como no conforme, y el equipo evaluó la
-observación como un límite esperado del propio proceso de liberación de
-versiones, no como un defecto a corregir.
+| Oportunidad detectada | Evidencia de la línea base |
+|---|---|
+| Duplicación entre `ci-casper.yml` y `ci-source.yml` | 37 de 46 líneas idénticas entre ambos archivos |
+| El control de commits no exigía el issue que la convención declaraba obligatorio | Commits válidos según el control, sin referencia a issue |
+| Dependencias desactualizadas sin monitoreo | 5 dependencias desactualizadas en cada tema (10 en total) |
+| Versionamiento completamente manual | Los releases v1.0.0 y v1.0.1 se publicaron a mano, sin propuesta automática |
+| Acciones externas fijadas a una versión, no a un commit | 0 de 9 acciones referenciadas por hash inmutable |
 
-Estas brechas son del mismo tipo: puntos donde la política declarada es más
-estricta que el control implementado, o donde el control aplica una regla fuera
-del contexto para el que fue pensada. Identificarlas tiene valor porque una
-automatización que se asume más estricta de lo que es genera una falsa sensación
-de control.
+Ninguna de estas oportunidades se identificó de forma aislada: todas emergieron
+de revisar el propio proceso de mantenimiento del repositorio construido en la
+Unidad 3, una vez que ese proceso llevaba suficiente actividad real para
+mostrar sus puntos débiles.
+
+### 10.2 Estrategias propuestas
+
+Cada mejora se evaluó contra los mismos cuatro criterios de ingeniería
+aplicados en el resto del proyecto: si el control resultante era ejecutable, si
+preservaba la decisión humana, si se adaptaba al contexto del equipo, y qué
+costo se aceptaba al adoptarlo. Dos de las cinco corresponden directamente a
+las estrategias de refactorización y modernización que exige la actividad; las
+otras tres extienden el mismo principio a mantenimiento preventivo y a
+automatización.
+
+| Intervención | Clasificación | Alternativa evaluada y descartada |
+|---|---|---|
+| Workflow reutilizable | Perfectivo · Refactorización (Fowler, 2018) | Dejar la duplicación como estaba |
+| Commitlint | Modernización | Parchar el script de bash propio |
+| Dependabot | Preventivo · adaptativo | Revisión manual periódica |
+| release-please | Automatización de versionamiento | semantic-release y changesets |
+| Fijado a SHA de acciones | Preventivo · seguridad de cadena de suministro | Confiar en el tag de versión |
+
+### 10.3 Implementación
+
+**Refactorización del workflow de temas.** Aplicando el catálogo de Fowler
+(2018), se combinaron `ci-casper.yml` y `ci-source.yml` mediante dos técnicas:
+*Extract Function*, que traslada la lógica común de build, empaquetado y
+validación con gscan a un único workflow reutilizable (`theme-ci.yml`), y
+*Parameterize Function*, que absorbe la única diferencia real entre ambos, el
+nombre del tema, en un parámetro de entrada (`workflow_call` con el input
+`theme`). Cada archivo delgado resultante conserva sus propios filtros por
+ruta, de modo que la independencia entre CI-1 y CI-2 no se pierde.
+
+![Duplicación antes de refactorizar](docs/evidencias/26_antes_duplicacion.png)
+
+*92 líneas totales, 37 duplicadas entre los dos pipelines de temas.*
+
+![Duplicación después de refactorizar](docs/evidencias/27_despues_duplicacion.png)
+*77 líneas totales, 0 duplicadas: la lógica común vive en un solo lugar.*
+
+![Pipeline reutilizable en verde](docs/evidencias/28_pipeline_theme_ci_verde.png)
+*`theme-ci.yml` ejecutándose con éxito, invocado desde `ci-casper.yml`.*
+
+[Ver el diff completo del pull request de refactorización](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/pull/33/files)
+
+**Modernización de la validación de commits.** El script de bash con expresión
+regular fue reemplazado por [`commitlint`](https://commitlint.js.org), el
+estándar de la industria para Conventional Commits. La configuración
+(`commitlint.config.js`) incorpora la regla nativa `references-empty`, que
+cierra la brecha detectada de forma independiente por el equipo y por el
+agente de IA: exigir el número de issue que la convención ya declaraba
+obligatorio.
+
+```javascript
+rules: {
+  'references-empty': [2, 'never'],
+}
+```
+
+![Rechazo de un commit sin issue](docs/evidencias/35_commitlint_rechazo_completo.png)
+*commitlint rechazando un commit que no referencia ningún issue.*
+
+**Dependabot para dependencias npm y GitHub Actions.** Se configuró
+`.github/dependabot.yml` para vigilar semanalmente las dependencias de ambos
+temas y, más adelante, también las acciones externas usadas en los workflows.
+Cada actualización llega como un pull request ordinario, sujeto al mismo
+control de cambios que cualquier contribución humana.
+
+![Pull requests automáticos de Dependabot](docs/evidencias/33_dependabot_prs_automaticos.png)
+*Ocho pull requests abiertos automáticamente, uno por cada dependencia
+desactualizada detectada.*
+
+**Automatización del versionamiento con release-please.** Se evaluaron tres
+herramientas: `semantic-release` publica directamente al detectar un commit
+que amerita nueva versión, sin paso de revisión; `changesets` es la que usa el
+propio Ghost, pero está diseñada para publicar paquetes a un registro npm, que
+no es el caso de este repositorio. Se adoptó
+[`release-please`](https://github.com/googleapis/release-please), la única de
+las tres que propone la versión en un pull request sujeto a aprobación humana
+en lugar de publicar directamente, preservando el criterio de decisión humana
+aplicado en todo el proyecto.
+
+El resultado más reciente de esta automatización es la versión
+[**v1.2.0**](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/releases/tag/v1.2.0),
+propuesta íntegramente por release-please en el
+[pull request #77](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/pull/77),
+con su changelog generado a partir del historial de Conventional Commits, y
+publicada con sus artefactos adjuntos tras la aprobación del equipo.
+
+**Fijado a SHA de las acciones externas.** Las nueve acciones externas
+utilizadas en los seis workflows que las referencian quedaron fijadas a su
+hash de commit exacto en vez de a una etiqueta de versión, siguiendo la misma
+lógica de riesgo que la vulnerabilidad detectada por el agente en la sección 8:
+un tag no es inmutable, y su mantenedor puede recrearlo apuntando a otro
+commit sin que el equipo se entere.
+
+```yaml
+# Antes
+uses: actions/checkout@v4
+
+# Despues
+uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+```
+
+[Ver el diff con los nueve hashes aplicados](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/pull/56/files)
+
+### 10.4 Evaluación del impacto
+
+| Intervención | Antes | Después |
+|---|---|---|
+| Workflow reutilizable | 92 líneas, 37 duplicadas | 77 líneas, 0 duplicadas |
+| Commitlint | Issue no exigido | Issue obligatorio |
+| Dependabot | 10 dependencias desactualizadas | 8 pull requests automáticos |
+| release-please | Versionamiento manual | Propuesto y aprobado |
+| Fijado a SHA | 0 de 9 acciones inmutables | 9 de 9 acciones inmutables |
+
+La evidencia más concluyente del impacto conjunto de estas cinco mejoras es que
+la cadena completa de un cambio en el código a una versión publicada hoy,
+ocurre sin intervención manual más allá de la aprobación: un pull request de
+release-please, aprobado por el equipo, dispara la construcción de artefactos
+y publica el release automáticamente. Antes de esta unidad, cada uno de esos
+pasos se hacía a mano.
+
+### 10.5 Desafíos encontrados durante la implementación
+
+Dos incidentes reales, no anticipados en el diseño original, surgieron al
+poner a funcionar las cinco mejoras juntas, y se documentan aquí porque son
+evidencia de que las automatizaciones se validaron en producción, no solo en
+el papel.
+
+**Commitlint rompía los pull requests de Dependabot.** La regla
+`references-empty`, exigida a todo commit, no distinguía entre commits humanos
+y commits generados por Dependabot, que nunca referencian un issue. Los ocho
+pull requests automáticos de la mejora anterior quedaron fallando el control
+de convención de commits.
+
+[Ver la corrida que muestra el rechazo exacto](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/actions/runs/32921580256/job/98036038067?pr=63)
+*`references may not be empty` sobre un commit generado por Dependabot.*
+
+Se corrigió excluyendo específicamente al actor `dependabot[bot]` de este
+control, sin debilitar la regla para las personas, el mismo patrón que ya
+existía en `branch-lint.yml` para el mismo tipo de conflicto.
+
+```yaml
+jobs:
+  commitlint:
+    if: github.actor != 'dependabot[bot]'
+```
+
+[Ver el pull request de la corrección](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/pull/65)
+
+**release-please no disparaba la publicación de artefactos.** Por diseño de GitHub, ningún recurso creado con el GITHUB_TOKEN por defecto (incluido el tag que release-please publica al mergear su propio pull request) dispara otros workflows. Y release.yml, el encargado de construir y adjuntar los artefactos, depende exactamente de ese evento (push: tags: ['v*']) para activarse. Como resultado, el primer release automático se habría publicado sin los paquetes de Casper y Source.
+
+> `release-please failed: GitHub Actions is not permitted to create or approve pull requests.`
+
+Se corrigió sin introducir un token de acceso personal nuevo: un paso adicional
+con `actions/github-script` dispara `release.yml` explícitamente vía
+`workflow_dispatch`, usando el tag que release-please acaba de crear.
+
+[Ver el pull request de la corrección](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/pull/67)
+
+Un tercer detalle, más sutil, apareció en el mismo proceso: `release-please`,
+al no recibir el parámetro `target-branch` de forma explícita, abría su
+propuesta de versión contra la rama por defecto configurada en GitHub
+(`develop`) en vez de contra la rama que en realidad disparaba el workflow
+(`main`). Se corrigió agregando `target-branch: main` explícitamente a la
+configuración de la acción.
+
+[Ver el pull request de la corrección](https://github.com/nataliarrod-unisabana/gestion-configuracion-ghost/pull/75)
+
 
 ---
 
-## 11. Evidencias
+## 11. Brechas identificadas
+
+El equipo documenta a continuación diferencias conocidas entre las políticas
+declaradas y los controles implementados, así como brechas que se detectaron y
+cerraron durante el proyecto. Se dejan registradas de forma deliberada, sea
+que sigan abiertas o que ya se hayan resuelto, porque la trazabilidad de cómo
+se descubrió y se atendió cada una es tan relevante como el estado final.
+
+**El control de commits no exigía el identificador de issue: brecha cerrada.**
+Hasta la Unidad 3, `commit-lint.yml` validaba el tipo, el alcance y una
+longitud mínima de descripción, pero aceptaba mensajes sin la referencia
+`(#N)` que la convención declara obligatoria. Esta brecha, detectada de forma
+independiente por el equipo y por el agente de IA, se cerró en la Unidad 4
+reemplazando el script propio por `commitlint` con la regla nativa
+`references-empty` (sección 10.3).
+
+**El mensaje del control de ramas promete más de lo que verifica.** La ayuda
+que muestra `branch-lint.yml` indica un formato `release/v<X.Y.Z>` para las
+ramas de versión, mientras que el patrón acepta cualquier texto después del
+prefijo. Esta brecha permanece abierta: no representa un riesgo de seguridad,
+solo un mensaje de error impreciso, y no se corrigió dentro del alcance de
+esta actividad.
+
+**El agente de IA no analiza la validez estructural de YAML.** El agente
+evalúa el contenido de un cambio contra las reglas declaradas en
+`.gemini/styleguide.md`, pero no sustituye una validación estructural
+especializada. Un job con una estructura YAML incorrecta no fue señalado por
+el agente en una revisión, evidenciando el límite de su alcance: evalúa
+contenido contra reglas, no sintaxis.
+
+**El pull request de release mezcla configuration items por diseño.** La regla
+de independencia de CI aplica al desarrollo cotidiano; el acto de release, por
+su naturaleza, consolida en un mismo pull request el trabajo ya integrado de
+los tres CI. El agente señaló repetidamente pull requests de este tipo como no
+conformes, y el equipo evaluó la observación como un límite esperado del
+propio proceso de liberación de versiones, no como un defecto a corregir.
+
+Estas brechas, cerradas o abiertas, comparten un mismo origen: automatizar un
+proceso expone fricciones que solo se manifiestan cuando el sistema completo
+está en marcha, no cuando cada pieza se diseña por separado. Identificarlas y
+documentarlas, en lugar de ocultarlas, es parte del mismo principio que rige
+todo el proyecto: una política de configuración solo es un control cuando se
+ejecuta, bloquea, y deja registro de lo que encuentra, incluidos sus propios
+límites.
+
+---
+
+## 12. Evidencias
 
 El detalle completo de las evidencias, con su descripción individual, está en el
 índice de [`docs/evidencias/README.md`](docs/evidencias/README.md). Las capturas
@@ -491,7 +698,7 @@ anteriores, junto al argumento que respaldan.
 
 ---
 
-## 12. Referencias
+## 13. Referencias
 
 Berczuk, S., & Appleton, B. (2002). *Software configuration management patterns*. Addison-Wesley.
 
